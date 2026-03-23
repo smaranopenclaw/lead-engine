@@ -8,7 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Runs on GitHub's servers — discover + score new businesses
   discover-and-score:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -22,19 +21,14 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y chromium-browser
       - name: Install dependencies
         run: npm ci
-      - name: Run discovery + scoring
-        run: node -e "
-          import('./agents/discovery.js').then(m => m.runDiscovery())
-            .then(() => import('./agents/scorer.js'))
-            .then(m => m.runScorer())
-        "
+      - name: Discover + Score
+        run: node run-discover.js
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           CHROME_PATH: /usr/bin/chromium-browser
 
-  # Runs on your Mac — Claude Code builds sites + Gemini drafts emails
   build-and-email:
     runs-on: self-hosted
     needs: discover-and-score
@@ -43,12 +37,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: npm ci
-      - name: Build sites with Claude Code + draft emails
-        run: node -e "
-          import('./agents/siteBuilder.js').then(m => m.runSiteBuilder())
-            .then(() => import('./agents/emailDrafter.js'))
-            .then(m => m.runEmailDrafter())
-        "
+      - name: Build sites + Draft emails
+        run: node run-build.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
