@@ -6,7 +6,6 @@
     "start": "node orchestrator.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.0",
     "@supabase/supabase-js": "^2.49.4",
     "apify-client": "^2.10.0",

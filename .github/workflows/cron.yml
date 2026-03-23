@@ -5,41 +5,52 @@ on:
     - cron: '30 2 * * *'   # 8:00 AM IST
     - cron: '30 7 * * *'   # 1:00 PM IST
     - cron: '30 12 * * *'  # 6:00 PM IST
-  workflow_dispatch:        # manual trigger for testing
+  workflow_dispatch:
 
 jobs:
-  run:
+  # Runs on GitHub's servers — discover + score new businesses
+  discover-and-score:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install Chromium
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y chromium-browser
-
+        run: sudo apt-get update -qq && sudo apt-get install -y chromium-browser
       - name: Install dependencies
         run: npm ci
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel
-
-      - name: Run Lead Engine
-        run: node orchestrator.js
+      - name: Run discovery + scoring
+        run: node -e "
+          import('./agents/discovery.js').then(m => m.runDiscovery())
+            .then(() => import('./agents/scorer.js'))
+            .then(m => m.runScorer())
+        "
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CHROME_PATH: /usr/bin/chromium-browser
+
+  # Runs on your Mac — Claude Code builds sites + Gemini drafts emails
+  build-and-email:
+    runs-on: self-hosted
+    needs: discover-and-score
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: npm ci
+      - name: Build sites with Claude Code + draft emails
+        run: node -e "
+          import('./agents/siteBuilder.js').then(m => m.runSiteBuilder())
+            .then(() => import('./agents/emailDrafter.js'))
+            .then(m => m.runEmailDrafter())
+        "
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CHROME_PATH: /usr/bin/chromium-browser
