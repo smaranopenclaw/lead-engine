@@ -6,11 +6,22 @@ on:
     - cron: '30 7 * * *'   # 1:00 PM IST
     - cron: '30 12 * * *'  # 6:00 PM IST
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to run'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full         # discover + score + build + email
+          - score_only   # score unscored leads, no discovery
+          - build_only   # build sites + draft emails only
 
 jobs:
   discover-and-score:
+    if: ${{ github.event_name == 'schedule' || inputs.mode == 'full' || inputs.mode == 'score_only' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,17 +33,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Discover + Score
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'full' }}
         run: node run-discover.js
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           CHROME_PATH: /usr/bin/chromium-browser
+      - name: Score only (no discovery)
+        if: ${{ inputs.mode == 'score_only' }}
+        run: node run-score-only.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CHROME_PATH: /usr/bin/chromium-browser
 
   build-and-email:
-    runs-on: self-hosted
     needs: discover-and-score
-    timeout-minutes: 45
+    if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'full' || inputs.mode == 'build_only') }}
+    runs-on: self-hosted
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
