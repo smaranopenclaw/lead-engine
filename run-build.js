@@ -6,6 +6,8 @@ const missing = REQUIRED.filter(k => !process.env[k])
 if (missing.length) { console.error('Missing:', missing.join(', ')); process.exit(1) }
 
 console.log(`=== Build + Email started ${new Date().toISOString()} ===`)
-try { await runSiteBuilder() }   catch (e) { console.error('SiteBuilder failed:', e.message) }
-try { await runEmailDrafter() }  catch (e) { console.error('EmailDrafter failed:', e.message) }
+let exitCode = 0
+try { await runSiteBuilder() }   catch (e) { console.error('SiteBuilder failed:', e.message, e.stack); exitCode = 1 }
+try { await runEmailDrafter() }  catch (e) { console.error('EmailDrafter failed:', e.message, e.stack); exitCode = 1 }
 console.log(`=== Done ${new Date().toISOString()} ===`)
+process.exit(exitCode)

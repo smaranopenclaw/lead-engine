@@ -64,3 +64,4 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PATH: /Users/aiagent/.local/bin:/usr/local/bin:/usr/bin:/bin
