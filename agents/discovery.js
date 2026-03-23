@@ -24,29 +24,33 @@ export async function runDiscovery() {
   const searchStrings = categories.map(c => `${c} in Hyderabad`)
   console.log('[Discovery] Searching:', searchStrings)
 
-  const run = await client.actor('apify/google-maps-scraper').call({
+  // compass/crawler-google-places input schema
+  const run = await client.actor('compass/crawler-google-places').call({
     searchStringsArray: searchStrings,
     maxCrawledPlacesPerSearch: 20,
     language: 'en',
     countryCode: 'in',
-    includeWebResults: false
+    maxImages: 0,
+    maxReviews: 0,
+    exportPlaceUrls: false
   })
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems()
   console.log(`[Discovery] Found ${items.length} businesses from Apify`)
 
+  // compass/crawler-google-places output field mapping
   const leads = items
-    .filter(item => item.placeId)
+    .filter(item => item.placeId || item.id)
     .map(item => ({
-      place_id: item.placeId,
+      place_id: item.placeId || item.id,
       name: item.title || item.name,
-      address: item.address,
-      phone: item.phone,
-      website: item.website || null,
-      category: item.categoryName || item.category,
-      rating: item.totalScore || item.rating,
+      address: item.address || item.street,
+      phone: item.phone || item.phoneUnformatted,
+      website: item.website || item.url2 || null,
+      category: item.categoryName || item.categories?.[0] || item.category,
+      rating: item.totalScore || item.stars || item.rating,
       maps_url: item.url,
-      has_website: !!(item.website),
+      has_website: !!(item.website || item.url2),
       city: 'Hyderabad'
     }))
 
