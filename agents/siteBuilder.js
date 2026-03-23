@@ -49,8 +49,14 @@ async function runLighthouse(url) {
 }
 
 function deployToVercel(siteDir, projectName) {
-  const cmd = `vercel ${siteDir} --token ${process.env.VERCEL_TOKEN} --yes --name ${projectName} --prod 2>&1`
-  const output = execSync(cmd, { encoding: 'utf8' })
+  const cmd = `vercel ${siteDir} --token ${process.env.VERCEL_TOKEN} --yes --name ${projectName} --prod`
+  let output
+  try {
+    output = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+  } catch (e) {
+    const detail = [e.stdout, e.stderr].filter(Boolean).join('\n').trim().slice(0, 1000)
+    throw new Error(`Vercel deploy failed (exit ${e.status}):\n${detail}`)
+  }
   const lines = output.trim().split('\n').filter(Boolean)
   const urlLine = lines.reverse().find(l => l.includes('.vercel.app') || l.startsWith('https://'))
   if (!urlLine) throw new Error(`Could not parse Vercel URL:\n${output}`)
