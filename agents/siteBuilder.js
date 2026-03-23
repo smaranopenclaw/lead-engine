@@ -15,7 +15,10 @@ const MAX_ITERATIONS = 3
 async function runLighthouse(url) {
   let chrome
   try {
+    const chromePath = process.env.CHROME_PATH ||
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     chrome = await chromeLauncher.launch({
+      chromePath,
       chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
     })
     const result = await lighthouse(url, {
@@ -67,8 +70,8 @@ async function deployToVercel(siteDir, projectName) {
   let siteUrl
   try {
     const data = JSON.parse(result.stdout.trim())
-    if (data?.deployment?.url) siteUrl = `https://${data.deployment.url}`
-    else if (data?.url) siteUrl = data.url.startsWith('https://') ? data.url : `https://${data.url}`
+    const rawUrl = data?.deployment?.url || data?.url || ''
+    siteUrl = rawUrl.startsWith('https://') ? rawUrl : `https://${rawUrl}`
   } catch {}
   if (!siteUrl) {
     const lines = result.stdout.trim().split('\n').filter(Boolean)
