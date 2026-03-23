@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 import { writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -49,17 +49,21 @@ async function runLighthouse(url) {
 }
 
 function deployToVercel(siteDir, projectName) {
-  const cmd = `vercel ${siteDir} --token ${process.env.VERCEL_TOKEN} --yes --name ${projectName} --prod`
-  let output
-  try {
-    output = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
-  } catch (e) {
-    const detail = [e.stdout, e.stderr].filter(Boolean).join('\n').trim().slice(0, 1000)
-    throw new Error(`Vercel deploy failed (exit ${e.status}):\n${detail}`)
+  const RUNNER_PATH = '/Users/aiagent/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'
+  const result = spawnSync('vercel', [siteDir, '--token', process.env.VERCEL_TOKEN, '--yes', '--name', projectName, '--prod'], {
+    encoding: 'utf8',
+    timeout: 120000,
+    maxBuffer: 10 * 1024 * 1024,
+    env: { ...process.env, PATH: RUNNER_PATH },
+  })
+  if (result.error) throw new Error(`vercel spawn failed: ${result.error.message}`)
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr].filter(Boolean).join('\n').trim().slice(0, 1000)
+    throw new Error(`Vercel deploy failed (exit ${result.status}):\n${detail || '(no output)'}`)
   }
-  const lines = output.trim().split('\n').filter(Boolean)
+  const lines = result.stdout.trim().split('\n').filter(Boolean)
   const urlLine = lines.reverse().find(l => l.includes('.vercel.app') || l.startsWith('https://'))
-  if (!urlLine) throw new Error(`Could not parse Vercel URL:\n${output}`)
+  if (!urlLine) throw new Error(`Could not parse Vercel URL:\n${result.stdout}`)
   return urlLine.trim()
 }
 
