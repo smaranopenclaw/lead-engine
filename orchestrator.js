@@ -5,7 +5,7 @@ import { runEmailDrafter } from './agents/emailDrafter.js'
 
 const REQUIRED_ENV = [
   'APIFY_TOKEN', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY',
-  'VERCEL_TOKEN', 'ANTHROPIC_API_KEY'
+  'VERCEL_TOKEN', 'GEMINI_API_KEY'
 ]
 
 function checkEnv() {
