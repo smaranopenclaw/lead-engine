@@ -48,10 +48,11 @@ async function runLighthouse(url) {
   }
 }
 
-function deployToVercel(siteDir, projectName) {
+async function deployToVercel(siteDir, projectName) {
   const RUNNER_PATH = '/Users/aiagent/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'
   const scope = process.env.VERCEL_SCOPE || 'smaranopenclaw-6475s-projects'
-  const result = spawnSync('vercel', [siteDir, '--token', process.env.VERCEL_TOKEN, '--yes', '--scope', scope, '--name', projectName, '--prod'], {
+  const token = process.env.VERCEL_TOKEN
+  const result = spawnSync('vercel', [siteDir, '--token', token, '--yes', '--scope', scope, '--name', projectName, '--prod'], {
     encoding: 'utf8',
     timeout: 120000,
     maxBuffer: 10 * 1024 * 1024,
@@ -63,16 +64,29 @@ function deployToVercel(siteDir, projectName) {
     throw new Error(`Vercel deploy failed (exit ${result.status}):\n${detail || '(no output)'}`)
   }
   // Output is JSON when using --token
+  let siteUrl
   try {
     const data = JSON.parse(result.stdout.trim())
-    if (data?.deployment?.url) return `https://${data.deployment.url}`
-    if (data?.url) return data.url.startsWith('https://') ? data.url : `https://${data.url}`
+    if (data?.deployment?.url) siteUrl = `https://${data.deployment.url}`
+    else if (data?.url) siteUrl = data.url.startsWith('https://') ? data.url : `https://${data.url}`
   } catch {}
-  // Fallback: scan lines for a URL
-  const lines = result.stdout.trim().split('\n').filter(Boolean)
-  const urlLine = lines.reverse().find(l => l.includes('.vercel.app') || l.startsWith('https://'))
-  if (!urlLine) throw new Error(`Could not parse Vercel URL:\n${result.stdout}`)
-  return urlLine.trim()
+  if (!siteUrl) {
+    const lines = result.stdout.trim().split('\n').filter(Boolean)
+    const urlLine = lines.reverse().find(l => l.includes('.vercel.app') || l.startsWith('https://'))
+    if (!urlLine) throw new Error(`Could not parse Vercel URL:\n${result.stdout}`)
+    siteUrl = urlLine.trim()
+  }
+
+  // Disable SSO/deployment protection so the demo is publicly accessible
+  try {
+    await fetch(`https://api.vercel.com/v9/projects/${projectName}?teamId=${scope}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssoProtection: null }),
+    })
+  } catch {}
+
+  return siteUrl
 }
 
 export async function runSiteBuilder() {
@@ -105,7 +119,7 @@ export async function runSiteBuilder() {
 
       // Step 3: Deploy first version
       console.log(`[SiteBuilder] Deploying initial version...`)
-      const siteUrl = deployToVercel(siteDir, projectName)
+      const siteUrl = await deployToVercel(siteDir, projectName)
       console.log(`[SiteBuilder] Live at ${siteUrl}`)
 
       // Wait for Vercel to propagate
@@ -146,7 +160,7 @@ export async function runSiteBuilder() {
         })
 
         writeFileSync(join(siteDir, 'index.html'), html)
-        deployToVercel(siteDir, projectName)
+        await deployToVercel(siteDir, projectName)
 
         // Wait for redeploy to propagate
         await new Promise(r => setTimeout(r, 8000))
