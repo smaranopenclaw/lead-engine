@@ -49,19 +49,14 @@ function getCategoryScore(category) {
   return CATEGORY_SCORES.default
 }
 
-async function runLighthouse(url) {
-  let chrome
+async function runLighthouse(url, port) {
   try {
-    chrome = await chromeLauncher.launch({
-      chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-    })
     const result = await lighthouse(url, {
-      port: chrome.port,
+      port,
       output: 'json',
       onlyCategories: ['performance', 'seo', 'accessibility', 'best-practices'],
       logLevel: 'error'
     })
-
     const cats = result.lhr.categories
     const scores = {
       performance: Math.round((cats.performance?.score ?? 0) * 100),
@@ -76,36 +71,44 @@ async function runLighthouse(url) {
   } catch (err) {
     console.warn(`[Scorer] Lighthouse failed for ${url}:`, err.message)
     return null
-  } finally {
-    if (chrome) await chrome.kill()
   }
 }
 
+const BATCH_SIZE = 30 // max leads per run to stay within timeout
+
 export async function runScorer() {
   console.log('[Scorer] Starting...')
-  const leads = await getUnscoredLeads()
-  console.log(`[Scorer] ${leads.length} unscored leads`)
+  const leads = await getUnscoredLeads(BATCH_SIZE)
+  console.log(`[Scorer] ${leads.length} unscored leads (batch of ${BATCH_SIZE})`)
 
-  for (const lead of leads) {
-    try {
-      if (lead.has_website && lead.website) {
-        console.log(`[Scorer] Lighthouse → ${lead.website}`)
-        const result = await runLighthouse(lead.website)
-        if (result) {
-          await updateLead(lead.id, result)
-          console.log(`[Scorer] ${lead.name}: ${result.score}/100`)
-        } else {
-          // Lighthouse failed — treat as bad site
-          await updateLead(lead.id, { score: 20, lighthouse_data: { error: 'audit_failed' } })
-        }
+  // Score no-website leads instantly (no Chrome needed)
+  const noSiteLeads = leads.filter(l => !l.has_website || !l.website)
+  for (const lead of noSiteLeads) {
+    const score = getCategoryScore(lead.category)
+    await updateLead(lead.id, { score })
+    console.log(`[Scorer] ${lead.name} (no site): ${score}/100`)
+  }
+
+  // Score website leads with a single shared Chrome instance
+  const siteLeads = leads.filter(l => l.has_website && l.website)
+  if (siteLeads.length === 0) { console.log('[Scorer] Done'); return }
+
+  const chrome = await chromeLauncher.launch({
+    chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  })
+  try {
+    for (const lead of siteLeads) {
+      console.log(`[Scorer] Lighthouse → ${lead.website}`)
+      const result = await runLighthouse(lead.website, chrome.port)
+      if (result) {
+        await updateLead(lead.id, result)
+        console.log(`[Scorer] ${lead.name}: ${result.score}/100`)
       } else {
-        const score = getCategoryScore(lead.category)
-        await updateLead(lead.id, { score })
-        console.log(`[Scorer] ${lead.name} (no site, ${lead.category}): ${score}/100`)
+        await updateLead(lead.id, { score: 20, lighthouse_data: { error: 'audit_failed' } })
       }
-    } catch (err) {
-      console.error(`[Scorer] Error on ${lead.name}:`, err.message)
     }
+  } finally {
+    await chrome.kill()
   }
 
   console.log('[Scorer] Done')
